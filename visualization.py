@@ -6,6 +6,8 @@ from matplotlib.widgets import Slider, Button
 import numpy as np
 from config import *
 from models import TumorSimulation
+from itertools import count
+
 
 class TumorVisualizer:
     """Classe para visualização da simulação tumoral."""
@@ -52,7 +54,7 @@ class TumorVisualizer:
         self.ax2.grid(True)
         self.ax2.legend()
         self.ax2.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
-        self.ax2.set_ylim(N0/10, K*1.1)
+        self.ax2.set_ylim(N0/10, K*1.1) #?
         
         # Gráfico de crescimento
         self.line_growth, = self.ax3.plot([], [], 'g-', linewidth=2)
@@ -95,13 +97,13 @@ class TumorVisualizer:
         ax_treatment = plt.axes((0.15, 0.17, 0.7, 0.03), facecolor='lightgoldenrodyellow')
         self.treatment_slider = Slider(
             ax=ax_treatment, label='Fator de Tratamento',
-            valmin=0.0, valmax=1.0, valinit=TREATMENT_FACTOR_INIT, color='green'
+            valmin=0.0, valmax=1.0, valinit=S, color='green'
         )
         
         ax_r = plt.axes((0.15, 0.13, 0.7, 0.03), facecolor='lightgoldenrodyellow')
         self.r_slider = Slider(
             ax=ax_r, label='Taxa de Crescimento (r)',
-            valmin=0.001, valmax=0.02, valinit=R_INIT, color='blue'
+            valmin=0.001, valmax=0.02, valinit=r, color='blue'
         )
     
     def _connect_events(self):
@@ -126,8 +128,8 @@ class TumorVisualizer:
     
     def _update_title(self):
         """Atualiza título da figura."""
-        title = (f'Simulação do Modelo de Gompertz')
-        plt.suptitle(title, fontsize=14)
+        title = f'Simulação do Modelo de Gompertz'
+        plt.suptitle(title, fontsize=14, fontweight= 'bold')
         self.fig.canvas.draw_idle()
     
     def _toggle_simulation(self, event):
@@ -143,13 +145,16 @@ class TumorVisualizer:
         self.is_running = True
         self.play_button.label.set_text('PAUSAR')
         self.status_text.set_text("Simulação em andamento...")
-        
+
+        #Teste para frames.
+        frame_source = iter(self._frame_generator()) #É um iterador
+
         # Criar animação - sem limite de frames fixo
         self.ani = animation.FuncAnimation(
             self.fig, self._update_frame, 
-            frames=self._frame_generator(),
-            interval=ANIMATION_INTERVAL, 
-            blit=False, 
+            interval=ANIMATION_INTERVAL,
+            blit=False,
+            frames=frame_source,
             repeat=False
         )
         
@@ -175,7 +180,7 @@ class TumorVisualizer:
         
         self.fig.canvas.draw_idle()
     
-    def _reset_simulation(self, event=None):
+    def _reset_simulation(self, event):
         """Reinicia simulação completamente."""
         print("Resetando simulação...")
         

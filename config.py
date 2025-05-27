@@ -1,25 +1,30 @@
 """Configurações e constantes do modelo de simulação tumoral."""
+import numpy as np
 
 # Estados das células
-HEALTHY = 0 
-TUMOR = 1
-NECROTIC = 2
+HEALTHY, TUMOR, NECROTIC = 0,1,2
 
 # Parâmetros do modelo baseados no artigo
 GRID_WIDTH = 100
 GRID_HEIGHT = 100
-INITIAL_RADIUS = 5
+INITIAL_RADIUS = 3
+
 
 # Parâmetros biológicos
-R_INIT = 0.0060       # Taxa de crescimento inicial
-K = 1e13              # Capacidade de suporte (do artigo)
-N0 = 1e9              # População inicial (do artigo)
+K = 1e13           # Capacidade de carga máxima
+N0 = 1e9           # Tumor inicial
+r = 0.0060          # Constante de crescimento
+gamma = 0.04       # Efeito da droga
+c0 = 0.04         # Concentração no organismo
+S = 1            # if True -> há tratamento
+MAX_STEPS = 100       # Tempo máximo (semanas)
+#dt = 1             # Passos no tempo (instantes)
+MAX_CELL_AGE = 20
 SPONTANEOUS_RATE = 0.001
-MAX_CELL_AGE = 20     # Idade máxima antes da necrose
-TREATMENT_FACTOR_INIT = 0.0
+
+
 
 # Parâmetros da simulação
-MAX_STEPS = 100
 ANIMATION_INTERVAL = 100
 
 # Parâmetros visuais
