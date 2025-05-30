@@ -74,7 +74,7 @@ class TumorSimulation:
         self.gamma = gamma
         self.r = r
         self.c0 = c0
-        self.treatment_factor = S
+        self.treatment_factor = 0
         self.tumor_count = []
         self.necrotic_count = []
         self.steps = []
@@ -88,15 +88,18 @@ class TumorSimulation:
         self.gamma = gamma
         self.r = r
         self.c0 = c0
-        self.treatment_factor = S
+        self.treatment_factor = 0
         self.tumor_count = []
         self.necrotic_count = []
         self.steps = []
         self.growth_rates = []
         self.current_time = 0
 
-
+    #New function
     def calculate_drug_concentration(self, t):
+
+        #teste
+        print(f"Calculando concentração com treatment_factor={self.treatment_factor}")  # Debug
         #====Calcula c(t) = c₀ * S * t * e^(-rt)====
         return self.c0 * self.treatment_factor * t * np.exp(-self.r * t)
 
@@ -104,12 +107,13 @@ class TumorSimulation:
         #Atualiza um passo da simulação com efeito da droga.
         self.current_time +=1
 
+
         #DRUG EFFECT
         drug_effect = self.gamma * self.calculate_drug_concentration(self.current_time)
 
         new_grid = self.tumor_grid.grid.copy()
         #evita modificar o estado original enquanto processa células
-        
+
         # Processar cada célula
         for y in range(GRID_HEIGHT):
             for x in range(GRID_WIDTH):
@@ -120,13 +124,13 @@ class TumorSimulation:
                 elif self.tumor_grid.grid[y, x] == HEALTHY:
 
                     self._process_healthy_cell(x, y, new_grid)
-        
+
         # Atualizar grid
         self.tumor_grid.grid = new_grid
-        
+
         # Calcular estatísticas
         self._calculate_statistics(step)
-    
+
     def _process_tumor_cell(self, x, y, new_grid, drug_effect):
         #====Processa uma célula tumoral. com o efeito do medicamento (ou não)====
 
@@ -134,16 +138,18 @@ class TumorSimulation:
         self.tumor_grid.ages[y, x] += 1
         
         # NECROSE BASEADA APENAS NO TRATAMENTO (Modelo de Gompertz)
-        if self.treatment_factor > 0:
+        if self.treatment_factor == 1: #S varia APENAS de 0 a 1
             # Probabilidade de necrose proporcional ao tratamento
             # Células mais velhas são mais suscetíveis ao tratamento
             age_factor = min(float(self.tumor_grid.ages[y, x]) / MAX_CELL_AGE, 1.0)
             tumor_density = self.tumor_grid.get_tumor_density(x, y)
             
-            # Probabilidade de necrose por tratamento n
+            # Probabilidade de necrose por tratamento
                     #=======EQUAÇÃO DO TRATAMENTO=======
             p_necrosis = (self.treatment_factor * 0.1 * (1 + age_factor) * (0.5 + tumor_density/2) + drug_effect) #Efeito direto do medicamento
 
+            '''TESTE'''
+            print(f"Processando célula com treatment_factor={self.treatment_factor}, drug_effect={drug_effect}")  # Debug
             if np.random.random() < p_necrosis:
                 new_grid[y, x] = NECROTIC
                 return
@@ -159,6 +165,7 @@ class TumorSimulation:
                                                             #Valor mto pequeno evitar log(0) e suavizir o impactor para density =0
             p_division = (self.r * (1 - np.log(tumor_density + 1e-10)/ np.log(1.0+1e-10)) - drug_effect)
             #===========================================================
+
             if np.random.random() < p_division:
                 nx, ny = neighbors[np.random.randint(0, len(neighbors))]
                 new_grid[ny, nx] = TUMOR

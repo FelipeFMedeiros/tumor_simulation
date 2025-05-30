@@ -2,11 +2,15 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
+from matplotlib.lines import lineStyles
 from matplotlib.widgets import Slider, Button
 import numpy as np
+from mpl_toolkits.mplot3d.proj3d import transform
+from pandas import interval_range
+
+import config
 from config import *
 from models import TumorSimulation
-from itertools import count
 
 
 class TumorVisualizer:
@@ -24,7 +28,10 @@ class TumorVisualizer:
         self._setup_plots()
         self._setup_controls()
         self._connect_events()
-    
+
+        # variável de estado
+        self.treatment_active = False # se não funcionar, 0 (muda pra)
+
     def _setup_figure(self):
         """Configura a figura principal."""
         self.fig = plt.figure(figsize=FIGURE_SIZE)
@@ -32,39 +39,47 @@ class TumorVisualizer:
         
         # Layout com 3 gráficos
         self.ax1 = plt.subplot2grid((2, 2), (0, 0), rowspan=2, colspan=1)  # Grid
-        self.ax2 = plt.subplot2grid((2, 2), (0, 1), rowspan=1, colspan=1)  # População
-        self.ax3 = plt.subplot2grid((2, 2), (1, 1), rowspan=1, colspan=1)  # Crescimento
+        self.ax2 = plt.subplot2grid((3, 2), (0, 1), rowspan=2, colspan=1)  # População
+        #self.ax3 = plt.subplot2grid((2, 2), (1, 1), rowspan=1, colspan=1)  # Crescimento
     
     def _setup_plots(self):
         """Configura os gráficos."""
         # Grid do tumor
         self.cmap = ListedColormap(COLORS)
         self.im = self.ax1.imshow(self.simulation.tumor_grid.grid, cmap=self.cmap, vmin=0, vmax=2)
-        self.ax1.set_title('Simulação do Crescimento Tumoral')
+        self.ax1.set_title('Crescimento Tumoral')
         self.ax1.set_xticks([])
         self.ax1.set_yticks([])
         
         # Gráfico de população
         self.line_tumor, = self.ax2.plot([], [], 'r-', linewidth=2, label='Células Tumorais')
         self.line_necrotic, = self.ax2.plot([], [], 'k-', linewidth=2, label='Células Necróticas')
-        self.ax2.set_xlabel('Passos de Tempo')
-        self.ax2.set_ylabel('Contagem de Células (escala log)')
-        self.ax2.set_title('População Celular ao Longo do Tempo')
+        self.ax2.set_xlabel('Ciclos de evolução tumoral, t', fontsize=10)
+        self.ax2.set_ylabel('População Tumoral', fontsize=10)
+        self.ax2.set_title('População Celular ao Longo do Tempo', ha='center', fontsize=12)
         self.ax2.set_yscale('log')
-        self.ax2.grid(True)
-        self.ax2.legend()
+
+
+        # Ajusta o espaçamento para evitar sobreposição
+        #self.ax2.tick_params(axis='y', labelsize=8, pad=5)  # `pad` aumenta a distância entre números e eixo
+        #===============================================================================================
+        self.ax2.grid(True, alpha=0.4)
+        #self.ax2.set_xticks(np.arange)
+        self.ax2.legend(prop={'size': 8})
         self.ax2.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
-        self.ax2.set_ylim(N0/10, K*1.1) #?
-        
+        self.ax2.set_ylim(N0, K*1.1)
+
+
+        #=====================Decidir se esse gráfico permanece===============
         # Gráfico de crescimento
-        self.line_growth, = self.ax3.plot([], [], 'g-', linewidth=2)
-        self.ax3.set_xlabel('Passos de Tempo')
-        self.ax3.set_ylabel('Taxa de Crescimento')
-        self.ax3.set_title('Taxa de Crescimento Instantânea')
-        self.ax3.grid(True)
-        self.ax3.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
-        self.ax3.set_ylim(-0.1, 0.5)
-    
+        #self.line_growth, = self.ax3.plot([], [], 'g-', linewidth=2)
+        #self.ax3.set_xlabel('Passos de Tempo',  fontsize=10)
+        #self.ax3.set_ylabel('Taxa de Crescimento')
+        #self.ax3.set_title('Taxa de Crescimento Instantânea')
+        #self.ax3.grid(True)
+        #self.ax3.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
+        #self.ax3.set_ylim(-0.1, 0.5)
+        #=======================================================================
     def _setup_controls(self):
         """Configura controles interativos."""
         # Status
@@ -83,7 +98,8 @@ class TumorVisualizer:
         # Botões simplificados
         button_width = 0.15
         button_height = 0.04
-        button_y = 0.07
+        button_x = 0.05 #pos h vai de 0 a 1
+        button_y = 0.07 #pos v vai de 0 a 1
         
         # Botão Play/Pause
         ax_play = plt.axes((0.35, button_y, button_width, button_height))
@@ -92,24 +108,60 @@ class TumorVisualizer:
         # Botão Reset
         ax_reset = plt.axes((0.55, button_y, button_width, button_height))
         self.reset_button = Button(ax_reset, 'RESET', color='lightblue', hovercolor='blue')
-        
-        # Sliders
-        ax_treatment = plt.axes((0.15, 0.17, 0.7, 0.03), facecolor='lightgoldenrodyellow')
-        self.treatment_slider = Slider(
-            ax=ax_treatment, label='Fator de Tratamento',
-            valmin=0.0, valmax=1.0, valinit=S, color='green'
+
+        #Botão tratamento ON ou OFF=====================
+        ax_treatment = plt.axes((0.70, 0.20, button_width, button_height))
+        self.treatment_button = Button(
+            ax=ax_treatment,
+            label='Tratamento (OFF)',
+            color='lightgray', hovercolor='0.9' #Cor ao passar o mouse
         )
-        
-        ax_r = plt.axes((0.15, 0.13, 0.7, 0.03), facecolor='lightgoldenrodyellow')
+        #=========================================
+
+        #Slider controle de Gamma
+        ax_gamma = plt.axes((0.60, 0.33, 0.35, 0.03), facecolor='lightgoldenrodyellow')
+        self.gamma_slider = Slider(
+            ax=ax_gamma, label='Efeito da droga', valmin= 0.001, valmax= 1.0, valinit=gamma, color='green'
+        )
+
+        #Slider controle C0
+        ax_c0 = plt.axes((0.60, 0.30, 0.35, 0.03), facecolor='lightgoldenrodyellow')
+        self.ax_c0 = Slider(
+            ax= ax_c0, label= 'Concentração (c0)', valmin=0.001, valmax=1.0, valinit=c0, color='lightblue'
+        )
+
+        #Slider Taxa de Crescimento
+        ax_r = plt.axes((0.60, 0.26, 0.35, 0.03), facecolor='lightgoldenrodyellow')
         self.r_slider = Slider(
-            ax=ax_r, label='Taxa de Crescimento (r)',
-            valmin=0.001, valmax=0.02, valinit=r, color='blue'
+            ax=ax_r, label='Taxa de \nCrescimento (r)',
+            valmin=0.001, valmax=0.2, valinit=r, color='blue'
         )
-    
+
+
+    #Alterar estado e cor do botão ao ser pressionado===============================
+    def toggle_treatment(self, event):
+        self.treatment_active = not self.treatment_active #Invertendo o estado
+
+        if self.treatment_active:
+            self.simulation.treatment_factor = 1.0
+
+            self.treatment_button.label.set_text('Tratamento(ON)')
+            self.treatment_button.color='limegreen' #Verde quando ativo
+        else:
+            self.simulation.treatment_factor = 0.0
+            self.treatment_button.label.set_text('Tratamento(OFF)')
+            self.treatment_button.color = 'lightgray'  # Verde quando ativo
+
+        print(f"Tratamento alterado para: {self.simulation.treatment_factor}")
+        self.fig.canvas.draw() #Atualiza a figura
+#=================================================================
+
     def _connect_events(self):
         """Conecta eventos aos controles."""
         self.r_slider.on_changed(self._on_parameter_change)
-        self.treatment_slider.on_changed(self._on_parameter_change)
+        self.gamma_slider.on_changed(self._on_parameter_change) #Adicionando slider de gamma
+        self.ax_c0.on_changed(self._on_parameter_change) #Adicionando slider c0
+        self.treatment_button.on_clicked(self.toggle_treatment) #Conecta função ao botão
         self.play_button.on_clicked(self._toggle_simulation)
         self.reset_button.on_clicked(self._reset_simulation)
         self.fig.canvas.mpl_connect('close_event', self._on_close)
@@ -118,13 +170,16 @@ class TumorVisualizer:
         """Chamado quando um slider muda - reinicia a simulação."""
         # Atualizar parâmetros
         self.simulation.r = float(self.r_slider.val)
-        self.simulation.treatment_factor = float(self.treatment_slider.val)
-        
+        self.simulation.gamma = float(self.gamma_slider.val)
+        self.simulation.c0 = float(self.ax_c0.val)
+
+        print(f'Valor de Gamma Atualizado: {self.simulation.gamma:.4f}')
+        print(f"Parâmetros atualizados - r: {self.simulation.r:.4f}, tratamento: {self.simulation.treatment_factor:.2f}")
+
         # Reiniciar simulação automaticamente
         self._reset_simulation_data()
         self._update_title()
-        
-        print(f"Parâmetros atualizados - r: {self.simulation.r:.4f}, tratamento: {self.simulation.treatment_factor:.2f}")
+
     
     def _update_title(self):
         """Atualiza título da figura."""
@@ -195,7 +250,14 @@ class TumorVisualizer:
         
         # Resetar dados da simulação
         self._reset_simulation_data()
-        
+
+        #Botão e fator de tratamento OFF
+        if self._reset_simulation:
+            self.treatment_active = False
+            self.simulation.treatment_factor = 0.0
+            self.treatment_button.label.set_text('Tratamento(OFF)')
+            self.treatment_button.color = 'lightgray'  # Verde quando ativo
+        #===============================================================
         # Atualizar interface
         self.play_button.label.set_text('INICIAR')
         self.status_text.set_text("Simulação reiniciada. Clique em 'Iniciar'")
@@ -211,12 +273,15 @@ class TumorVisualizer:
         
         # Aplicar parâmetros atuais dos sliders
         self.simulation.r = float(self.r_slider.val)
-        self.simulation.treatment_factor = float(self.treatment_slider.val)
+        self.simulation.gamma = float(self.gamma_slider.val)
+        self.simulation.c0 = float(self.ax_c0.val)
+
+        '''VAMOS VER ISSO'''
+        #self.simulation.treatment_factor = self.toggle_treatment() #se der errado, substitua para self.simulation.treatment
         
         # Limpar gráficos
         self.line_tumor.set_data([], [])
         self.line_necrotic.set_data([], [])
-        self.line_growth.set_data([], [])
         
         # Atualizar grid visual
         self.im.set_array(self.simulation.tumor_grid.grid)
@@ -227,7 +292,7 @@ class TumorVisualizer:
     def _update_frame(self, frame):
         """Atualiza frame da animação."""
         if not self.is_running:
-            return [self.im, self.line_tumor, self.line_necrotic, self.line_growth]
+            return [self.im, self.line_tumor, self.line_necrotic]
         
         self.current_frame = frame
         
@@ -241,11 +306,12 @@ class TumorVisualizer:
         if self.simulation.steps:
             self.line_tumor.set_data(self.simulation.steps, self.simulation.tumor_count)
             self.line_necrotic.set_data(self.simulation.steps, self.simulation.necrotic_count)
-            
+
+            '''REMOVER'''
             # Gráfico de crescimento
-            if len(self.simulation.growth_rates) > 0:
-                growth_steps = self.simulation.steps[:len(self.simulation.growth_rates)]
-                self.line_growth.set_data(growth_steps, self.simulation.growth_rates)
+            #if len(self.simulation.growth_rates) > 0:
+            #    growth_steps = self.simulation.steps[:len(self.simulation.growth_rates)]
+            #    self.line_growth.set_data(growth_steps, self.simulation.growth_rates)
         
         # Ajustar limites dinamicamente
         self._adjust_plot_limits()
@@ -268,35 +334,59 @@ class TumorVisualizer:
                 self.ani.event_source.stop()
                 self.ani = None
         
-        return [self.im, self.line_tumor, self.line_necrotic, self.line_growth]
-    
+        return [self.im, self.line_tumor, self.line_necrotic]
+
+    '''FUNÇÃO NOVA'''
+    def _update_log_ticks(self, y_min, y_max):
+        """Atualiza os ticks do eixo Y para escala logarítmica."""
+        # Gera ticks em potências de 10
+        min_power = np.floor(np.log10(y_min))
+        max_power = np.ceil(np.log10(y_max))
+
+        # Cria ticks principais
+        major_ticks = np.logspace(min_power, max_power, num=int(max_power - min_power) + 1)
+
+        # Cria ticks menores (opcional)
+        minor_ticks = []
+        for i in range(int(min_power), int(max_power)):
+            minor_ticks.extend(np.linspace(10 ** i, 10 ** (i + 1), 9)[1:-1])
+
+        self.ax2.set_yticks(major_ticks)
+        self.ax2.set_yticks(minor_ticks, minor=True)
+        self.ax2.tick_params(axis='y', which='both', labelsize=8)
+
+        # Mostra labels apenas para os ticks principais
+        self.ax2.set_yticklabels([f"$10^{{{int(np.log10(t))}}}$" for t in major_ticks])
+
     def _adjust_plot_limits(self):
-        """Ajusta limites dos gráficos dinamicamente."""
-        if not self.simulation.steps:
+        """Ajusta limites dos gráficos dinamicamente para escala logarítmica."""
+        if not self.simulation.steps or not self.simulation.tumor_count:
             return
-            
-        steps = self.simulation.steps
-        growth_rates = self.simulation.growth_rates
-        max_step = max(steps) if steps else 0
-        
-        # Ajustar limites X dinamicamente
-        x_limit = max(max_step + 20, MAX_STEPS)  # Sempre um pouco além do frame atual
+
+        # Ajuste do eixo X
+        max_step = max(self.simulation.steps)
+        x_limit = max(max_step + 20, MAX_STEPS)
         self.ax2.set_xlim(0, x_limit)
-        self.ax3.set_xlim(0, x_limit)
-        
-        # Gráfico de população
-        if self.simulation.tumor_count and max(self.simulation.tumor_count) > 0:
-            max_tumor = max(self.simulation.tumor_count)
-            min_tumor = min([c for c in self.simulation.tumor_count if c > 0] or [1])
-            self.ax2.set_ylim(max(min_tumor/2, 1), max_tumor*2)
-        
-        # Gráfico de crescimento
-        if growth_rates:
-            min_rate = min(growth_rates)
-            max_rate = max(growth_rates)
-            margin = abs(max_rate - min_rate) * 0.1 if max_rate != min_rate else 0.1
-            self.ax3.set_ylim(min_rate - margin, max_rate + margin)
-    
+
+        # Ajuste do eixo Y (escala logarítmica)
+        current_tumor = self.simulation.tumor_count[-1]
+        current_necrotic = self.simulation.necrotic_count[-1]
+
+        # Define limites baseados nos valores atuais com margem
+        y_min = max(N0, min(current_tumor, current_necrotic) / 10)  # 10% abaixo do menor valor
+        y_max = max(current_tumor, current_necrotic) * 2  # Dobro do maior valor
+
+        # Garante que y_min não seja zero (problema com log)
+        y_min = max(y_min, 1)
+
+        # Aplica os limites
+        self.ax2.set_ylim(y_min, y_max)
+
+        # Atualiza os ticks do eixo Y para escala log
+        self._update_log_ticks(y_min, y_max)
+
+
+
     def _on_close(self, event):
         """Salva resultados ao fechar."""
         print("Fechando aplicação e salvando dados...")
@@ -305,7 +395,7 @@ class TumorVisualizer:
         if self.ani:
             self.ani.event_source.stop()
         
-        # Salvar dados se há dados para salvar
+        # Se houver dados para salvar
         if self.simulation.steps:
             try:
                 from data_manager import DataManager
