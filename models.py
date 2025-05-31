@@ -10,6 +10,7 @@ class TumorGrid:
         self.ages = np.zeros((GRID_HEIGHT, GRID_WIDTH), dtype=int)
         self.initial_tumor_count = 0
         self.scale_factor = 1
+        self.real_world_scale = N0 #Fator de escala para o mundo real
         
     def initialize(self):
         """Inicializa o grid com tumor central."""
@@ -28,9 +29,21 @@ class TumorGrid:
         
         # =================Calcular FATOR de escala=================
         self.scale_factor = N0 / self.initial_tumor_count if self.initial_tumor_count > 0 else 1
-        print(f"Células tumorais iniciais: {self.initial_tumor_count}")
+        print(f"Células tumorais iniciais: {self.initial_tumor_count} (≈ {self.scale_factor:.2e} células reais)")
         return self.initial_tumor_count
-    
+
+    '''FUNÇÃO NOVA TESTANDO'''
+    def get_real_world_count(self):
+        """Retorna a estimativa de células no mundo real."""
+        current_tumor = np.sum(self.grid == TUMOR)
+        current_necrotic = np.sum(self.grid == NECROTIC)
+        return {
+            'tumor_real': current_tumor * self.scale_factor,
+            'necrotic_real': current_necrotic * self.scale_factor,
+            'total_real': (current_tumor + current_necrotic) * self.scale_factor,
+            #'current_real_count' : self.get_real_world_count()
+        }
+
     def get_tumor_density(self, x, y, radius=1):
         """Calcula densidade tumoral local."""
                             #LimEsq     Não passa da borda    LimDir
@@ -40,7 +53,7 @@ class TumorGrid:
         subgrid = self.grid[y_min:y_max, x_min:x_max]
         total_cells = (y_max - y_min) * (x_max - x_min)
         tumor_cells = np.sum(subgrid == TUMOR) + np.sum(subgrid == NECROTIC)
-        
+
         return tumor_cells / total_cells if total_cells > 0 else 0
 
     def get_healthy_neighbors(self, x, y):
@@ -99,13 +112,15 @@ class TumorSimulation:
     def calculate_drug_concentration(self, t):
 
         #teste
-        print(f"Calculando concentração com treatment_factor={self.treatment_factor}")  # Debug
+        print(f"Calculando concentração com treatment_factor={self.treatment_factor:.0f}")  # Debug
+
         #====Calcula c(t) = c₀ * S * t * e^(-rt)====
         return self.c0 * self.treatment_factor * t * np.exp(-self.r * t)
 
     def update_step(self, step):
         #Atualiza um passo da simulação com efeito da droga.
         self.current_time +=1
+
 
 
         #DRUG EFFECT
@@ -149,7 +164,8 @@ class TumorSimulation:
             p_necrosis = (self.treatment_factor * 0.1 * (1 + age_factor) * (0.5 + tumor_density/2) + drug_effect) #Efeito direto do medicamento
 
             '''TESTE'''
-            print(f"Processando célula com treatment_factor={self.treatment_factor}, drug_effect={drug_effect}")  # Debug
+            print(f"Processando célula com treatment_factor={self.treatment_factor}, drug_effect={drug_effect:.2f}")  # Debug
+
             if np.random.random() < p_necrosis:
                 new_grid[y, x] = NECROTIC
                 return
@@ -181,13 +197,18 @@ class TumorSimulation:
     
     def _calculate_statistics(self, step):
         """Calcula estatísticas do passo atual."""
-        tumor_cells = np.sum(self.tumor_grid.grid == TUMOR)
-        necrotic_cells = np.sum(self.tumor_grid.grid == NECROTIC)
+        real_counts = self.tumor_grid.get_real_world_count()
         
         # Aplicar escala
-        self.tumor_count.append(tumor_cells * self.tumor_grid.scale_factor)
-        self.necrotic_count.append(necrotic_cells * self.tumor_grid.scale_factor)
+        self.tumor_count.append(real_counts['tumor_real'])
+        self.necrotic_count.append(real_counts['necrotic_real'])
         self.steps.append(step)
+
+        #Log dos valores reais
+        print(f"\nEstatísticas no passo {step}:")
+        print(f"Células tumorais: {int(real_counts['tumor_real']):,}")
+        print(f"Células necróticas: {int(real_counts['necrotic_real']):,}")
+        print(f"Total de células: {int(real_counts['total_real']):,}")
         
         # Calcular taxa de crescimento
         if len(self.tumor_count) > 1 and self.tumor_count[-2] > 0:

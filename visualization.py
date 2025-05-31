@@ -1,5 +1,6 @@
 """Interface gráfica e visualização da simulação."""
 import matplotlib.pyplot as plt
+from fontTools.ttLib.woff2 import bboxFormat
 from matplotlib.colors import ListedColormap
 import matplotlib.animation as animation
 from matplotlib.lines import lineStyles
@@ -9,6 +10,7 @@ from mpl_toolkits.mplot3d.proj3d import transform
 from pandas import interval_range
 
 import config
+from models import TumorGrid
 from config import *
 from models import TumorSimulation
 
@@ -18,6 +20,7 @@ class TumorVisualizer:
     
     def __init__(self):
         self.simulation = TumorSimulation()
+        self.grid = TumorGrid()
         self.simulation.reset()
         
         self.is_running = False
@@ -40,7 +43,7 @@ class TumorVisualizer:
         # Layout com 3 gráficos
         self.ax1 = plt.subplot2grid((2, 2), (0, 0), rowspan=2, colspan=1)  # Grid
         self.ax2 = plt.subplot2grid((3, 2), (0, 1), rowspan=2, colspan=1)  # População
-        #self.ax3 = plt.subplot2grid((2, 2), (1, 1), rowspan=1, colspan=1)  # Crescimento
+
     
     def _setup_plots(self):
         """Configura os gráficos."""
@@ -59,27 +62,23 @@ class TumorVisualizer:
         self.ax2.set_title('População Celular ao Longo do Tempo', ha='center', fontsize=12)
         self.ax2.set_yscale('log')
 
+        #tumor_count = (np.sum(self.simulation.tumor_grid.grid == TUMOR)) *self.simulation.tumor_grid.scale_factor
+        #necrotic_count = (np.sum(self.simulation.tumor_grid.grid == NECROTIC)) *self.simulation.tumor_grid.scale_factor
+        #total_real = (tumor_count + necrotic_count) * self.simulation.tumor_grid.scale_factor
+
+        #self.real_counts = initial_cells
+        '''OLHAR'''
 
         # Ajusta o espaçamento para evitar sobreposição
-        #self.ax2.tick_params(axis='y', labelsize=8, pad=5)  # `pad` aumenta a distância entre números e eixo
+        self.ax2.tick_params(axis='y', labelsize=8, pad=5)  # `pad` aumenta a distância entre números e eixo
         #===============================================================================================
         self.ax2.grid(True, alpha=0.4)
-        #self.ax2.set_xticks(np.arange)
         self.ax2.legend(prop={'size': 8})
         self.ax2.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
         self.ax2.set_ylim(N0, K*1.1)
 
 
-        #=====================Decidir se esse gráfico permanece===============
-        # Gráfico de crescimento
-        #self.line_growth, = self.ax3.plot([], [], 'g-', linewidth=2)
-        #self.ax3.set_xlabel('Passos de Tempo',  fontsize=10)
-        #self.ax3.set_ylabel('Taxa de Crescimento')
-        #self.ax3.set_title('Taxa de Crescimento Instantânea')
-        #self.ax3.grid(True)
-        #self.ax3.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
-        #self.ax3.set_ylim(-0.1, 0.5)
-        #=======================================================================
+
     def _setup_controls(self):
         """Configura controles interativos."""
         # Status
@@ -94,6 +93,13 @@ class TumorVisualizer:
         # Estatísticas
         self.stats_text = plt.figtext(0.95, 0.02, "Tumor: 0 | Necrótico: 0", 
                                      ha="right", fontsize=10)
+
+        #Contagem real de células
+        '''COSNERTAR POSSÍVEL ENGANO NA ESCALA. foi mexido já'''
+        initial_cells = self.simulation.tumor_grid.scale_factor
+        self.stats_real_cells = plt.figtext(0.15, 0.2, f"Número real de células: {int(initial_cells):,}",
+                                            ha='left', va='center', fontsize=12, bbox=dict(facecolor='lightgrey', alpha=0.5)
+                                            )
         
         # Botões simplificados
         button_width = 0.15
@@ -174,7 +180,7 @@ class TumorVisualizer:
         self.simulation.c0 = float(self.ax_c0.val)
 
         print(f'Valor de Gamma Atualizado: {self.simulation.gamma:.4f}')
-        print(f"Parâmetros atualizados - r: {self.simulation.r:.4f}, tratamento: {self.simulation.treatment_factor:.2f}")
+        print(f"Parâmetros atualizados - r: {self.simulation.r:.4f}")
 
         # Reiniciar simulação automaticamente
         self._reset_simulation_data()
@@ -191,6 +197,7 @@ class TumorVisualizer:
         """Inicia/pausa simulação."""
         if not self.is_running:
             self._start_simulation()
+
         else:
             self._pause_simulation()
     
@@ -258,12 +265,19 @@ class TumorVisualizer:
             self.treatment_button.label.set_text('Tratamento(OFF)')
             self.treatment_button.color = 'lightgray'  # Verde quando ativo
         #===============================================================
-        # Atualizar interface
+        '''Atualizar interface'''
         self.play_button.label.set_text('INICIAR')
         self.status_text.set_text("Simulação reiniciada. Clique em 'Iniciar'")
         self.frame_text.set_text("Frame: 0")
         self.stats_text.set_text("Tumor: 0 | Necrótico: 0")
-        
+
+        '''TESTE'''
+        #Atualizar a contagem real
+
+        # Atualizar contagem real com valor inicial
+        initial_cells = self.simulation.tumor_grid.scale_factor
+        self.stats_real_cells.set_text(f"Número real de células: {int(initial_cells):,}")
+
         self.fig.canvas.draw_idle()
     
     def _reset_simulation_data(self):
@@ -288,7 +302,11 @@ class TumorVisualizer:
         
         # Resetar frame
         self.current_frame = 0
-    
+
+        #Atualiza a contagem real para o valor inicial
+        initial_cells = self.simulation.tumor_grid.initial_tumor_count * self.simulation.tumor_grid.scale_factor
+        self.stats_real_cells.set_text(f"Número real de células: {int(initial_cells):,}")
+
     def _update_frame(self, frame):
         """Atualiza frame da animação."""
         if not self.is_running:
@@ -301,28 +319,32 @@ class TumorVisualizer:
         
         # Atualizar visualizações
         self.im.set_array(self.simulation.tumor_grid.grid)
+
         
         # Atualizar gráficos
         if self.simulation.steps:
             self.line_tumor.set_data(self.simulation.steps, self.simulation.tumor_count)
             self.line_necrotic.set_data(self.simulation.steps, self.simulation.necrotic_count)
 
-            '''REMOVER'''
-            # Gráfico de crescimento
-            #if len(self.simulation.growth_rates) > 0:
-            #    growth_steps = self.simulation.steps[:len(self.simulation.growth_rates)]
-            #    self.line_growth.set_data(growth_steps, self.simulation.growth_rates)
-        
+
         # Ajustar limites dinamicamente
         self._adjust_plot_limits()
         
         # Atualizar textos de status
         tumor_count = np.sum(self.simulation.tumor_grid.grid == TUMOR)
         necrotic_count = np.sum(self.simulation.tumor_grid.grid == NECROTIC)
-        
+        # Calcular células totais (tumor + necrótico)
+        total_cells = (np.sum(self.simulation.tumor_grid.grid == TUMOR) + np.sum(self.simulation.tumor_grid.grid == NECROTIC))
+
+        # Aplicar escala
+        real_count = total_cells * self.simulation.tumor_grid.scale_factor
+        display_text = (f"{int(real_count):.0f}" if real_count < 1e6
+                        else f"{real_count:.2e}".replace('e+0', 'e'))
+
         self.frame_text.set_text(f"Frame: {frame}")
         self.stats_text.set_text(f"Tumor: {tumor_count} | Necrótico: {necrotic_count}")
-        
+        self.stats_real_cells.set_text(f'Número real de células: {display_text}')
+
         # Verificar convergência da simulação
         converged, reason = self.simulation.has_converged()
         if converged or frame >= MAX_STEPS * 5:  # Limite de segurança
