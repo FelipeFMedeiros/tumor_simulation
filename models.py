@@ -1,5 +1,7 @@
 """Modelos e lógica de simulação tumoral."""
 import numpy as np
+from fontTools.merge.util import current_time
+
 from config import *
 
 class TumorGrid:
@@ -49,12 +51,12 @@ class TumorGrid:
                             #LimEsq     Não passa da borda    LimDir
         x_min, x_max = max(0, x-radius), min(GRID_WIDTH, x+radius+1)
         y_min, y_max = max(0, y-radius), min(GRID_HEIGHT, y+radius+1)
-        
+
         subgrid = self.grid[y_min:y_max, x_min:x_max]
         total_cells = (y_max - y_min) * (x_max - x_min)
         tumor_cells = np.sum(subgrid == TUMOR) + np.sum(subgrid == NECROTIC)
 
-        return tumor_cells / total_cells if total_cells > 0 else 0
+        return tumor_cells / total_cells# if total_cells > 0 else 0
 
     def get_healthy_neighbors(self, x, y):
         """Retorna vizinhos saudáveis de uma célula."""
@@ -63,25 +65,25 @@ class TumorGrid:
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 nx, ny = x + dx, y + dy
-                if (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT and 
+                if (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT and
                     self.grid[ny, nx] == HEALTHY):
                     neighbors.append((nx, ny))
         return neighbors
-    
+
     def count_tumor_neighbors(self, x, y):
         """Conta vizinhos tumorais de uma célula."""
         count = 0
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 nx, ny = x + dx, y + dy
-                if (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT and 
+                if (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT and
                     self.grid[ny, nx] == TUMOR):
                     count += 1
         return count
 
 class TumorSimulation:
     """Classe principal para simulação do crescimento tumoral."""
-    
+
     def __init__(self):
         self.tumor_grid = TumorGrid()
         self.gamma = gamma
@@ -110,17 +112,16 @@ class TumorSimulation:
 
     #New function
     def calculate_drug_concentration(self, t):
-
+        time_in_days = t/24
         #teste
-        print(f"Calculando concentração com treatment_factor={self.treatment_factor:.0f}")  # Debug
+        print(f"Calculando concentração com treatment_factor={self.treatment_factor:}")  # Debug
 
         #====Calcula c(t) = c₀ * S * t * e^(-rt)====
-        return self.c0 * self.treatment_factor * t * np.exp(-self.r * t)
+        return self.c0 * self.treatment_factor * time_in_days * np.exp(-self.r * time_in_days)
 
     def update_step(self, step):
         #Atualiza um passo da simulação com efeito da droga.
         self.current_time +=1
-
 
 
         #DRUG EFFECT
@@ -151,20 +152,21 @@ class TumorSimulation:
 
         # Envelhecer
         self.tumor_grid.ages[y, x] += 1
-        
+
         # NECROSE BASEADA APENAS NO TRATAMENTO (Modelo de Gompertz)
         if self.treatment_factor == 1: #S varia APENAS de 0 a 1
             # Probabilidade de necrose proporcional ao tratamento
             # Células mais velhas são mais suscetíveis ao tratamento
             age_factor = min(float(self.tumor_grid.ages[y, x]) / MAX_CELL_AGE, 1.0)
             tumor_density = self.tumor_grid.get_tumor_density(x, y)
-            
-            # Probabilidade de necrose por tratamento
-                    #=======EQUAÇÃO DO TRATAMENTO=======
-            p_necrosis = (self.treatment_factor * 0.1 * (1 + age_factor) * (0.5 + tumor_density/2) + drug_effect) #Efeito direto do medicamento
 
+                # Probabilidade de necrose por tratamento
+                        #=======EQUAÇÃO DO TRATAMENTO=======
+
+
+            p_necrosis = (self.treatment_factor * 0.01 * (1 + 0.5* age_factor) * (0.5 + tumor_density) + drug_effect *0.1)  # Efeito direto do medicamento
             '''TESTE'''
-            print(f"Processando célula com treatment_factor={self.treatment_factor}, drug_effect={drug_effect:.2f}")  # Debug
+            print(f"Processando célula com treatment_factor={self.treatment_factor}, drug_effect={drug_effect}")  # Debug
 
             if np.random.random() < p_necrosis:
                 new_grid[y, x] = NECROTIC
@@ -175,30 +177,34 @@ class TumorSimulation:
         if neighbors:
             tumor_density = self.tumor_grid.get_tumor_density(x, y)
 
+            global_density = np.sum(self.tumor_grid.grid == TUMOR) / (GRID_WIDTH * GRID_HEIGHT)
+            #global_density = max(global_density, 1e-10)
+
             #=====Taxa de crescimento baseada no modelo de Gompertz=====
 
                         # Reduzida pelo tratamento e pela densidade
                                                             #Valor mto pequeno evitar log(0) e suavizir o impactor para density =0
-            p_division = (self.r * (1 - np.log(tumor_density + 1e-10)/ np.log(1.0+1e-10)) - drug_effect)
+            #p_division = (self.r * (1 - np.log(tumor_density + 1e-10)/ np.log(1.0+1e-10)) - drug_effect)
+            p_division = self.r * - np.log(global_density)- drug_effect
             #===========================================================
 
             if np.random.random() < p_division:
                 nx, ny = neighbors[np.random.randint(0, len(neighbors))]
                 new_grid[ny, nx] = TUMOR
-    
+
     def _process_healthy_cell(self, x, y, new_grid):
         """Processa uma célula saudável."""
         tumor_neighbors = self.tumor_grid.count_tumor_neighbors(x, y)
-        
+
         # Transformação espontânea reduzida pelo tratamento
-        if (tumor_neighbors > 0 and 
+        if (tumor_neighbors > 0 and
             np.random.random() < SPONTANEOUS_RATE * (1 - self.treatment_factor)):
             new_grid[y, x] = TUMOR
-    
+
     def _calculate_statistics(self, step):
         """Calcula estatísticas do passo atual."""
         real_counts = self.tumor_grid.get_real_world_count()
-        
+
         # Aplicar escala
         self.tumor_count.append(real_counts['tumor_real'])
         self.necrotic_count.append(real_counts['necrotic_real'])
@@ -209,37 +215,37 @@ class TumorSimulation:
         print(f"Células tumorais: {int(real_counts['tumor_real']):,}")
         print(f"Células necróticas: {int(real_counts['necrotic_real']):,}")
         print(f"Total de células: {int(real_counts['total_real']):,}")
-        
+
         # Calcular taxa de crescimento
         if len(self.tumor_count) > 1 and self.tumor_count[-2] > 0:
             growth_rate = (self.tumor_count[-1] - self.tumor_count[-2]) / self.tumor_count[-2]
             self.growth_rates.append(growth_rate)
         else:
             self.growth_rates.append(0)
-    
+
     def is_stabilized(self, window_size=10, threshold=0.001):
         """Verifica se a simulação estabilizou."""
         if len(self.growth_rates) < window_size:
             return False
-        
+
         # Verificar se as últimas taxas de crescimento são pequenas
         recent_rates = self.growth_rates[-window_size:]
         avg_growth = np.mean(np.abs(recent_rates))
-        
+
         return avg_growth < threshold
-    
+
     def has_converged(self):
         """Verifica se a simulação convergiu (critérios de parada)."""
         # Se não há células tumorais, a simulação acabou
         if len(self.tumor_count) > 0 >= self.tumor_count[-1]:
             return True, "Tumor eliminado"
-        
+
         # Se estabilizou por um tempo
         if self.is_stabilized():
             return True, "Simulação estabilizada"
-        
+
         # Se atingiu capacidade máxima
         if len(self.tumor_count) > 0 and self.tumor_count[-1] > K * 0.9:
             return True, "Capacidade máxima atingida"
-        
+
         return False, "Continuando..."

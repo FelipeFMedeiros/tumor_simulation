@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 from matplotlib.lines import lineStyles
 from matplotlib.widgets import Slider, Button
 import numpy as np
-from mpl_toolkits.mplot3d.proj3d import transform
+#from mpl_toolkits.mplot3d.proj3d import transform
 from pandas import interval_range
 
 import config
@@ -75,7 +75,7 @@ class TumorVisualizer:
         self.ax2.grid(True, alpha=0.4)
         self.ax2.legend(prop={'size': 8})
         self.ax2.set_xlim(0, MAX_STEPS * 2)  # Deixar espaço para simulações mais longas
-        self.ax2.set_ylim(N0, K*1.1)
+        self.ax2.set_ylim(0, K*0.5)
 
 
 
@@ -97,7 +97,7 @@ class TumorVisualizer:
         #Contagem real de células
         '''COSNERTAR POSSÍVEL ENGANO NA ESCALA. foi mexido já'''
         initial_cells = self.simulation.tumor_grid.scale_factor
-        self.stats_real_cells = plt.figtext(0.15, 0.2, f"Número real de células: {int(initial_cells):,}",
+        self.stats_real_cells = plt.figtext(0.15, 0.2, f"Escala real de células: {int(initial_cells):,}",
                                             ha='left', va='center', fontsize=12, bbox=dict(facecolor='lightgrey', alpha=0.5)
                                             )
         
@@ -276,7 +276,7 @@ class TumorVisualizer:
 
         # Atualizar contagem real com valor inicial
         initial_cells = self.simulation.tumor_grid.scale_factor
-        self.stats_real_cells.set_text(f"Número real de células: {int(initial_cells):,}")
+        self.stats_real_cells.set_text(f"Escala real de células: {int(initial_cells):,}")
 
         self.fig.canvas.draw_idle()
     
@@ -305,7 +305,7 @@ class TumorVisualizer:
 
         #Atualiza a contagem real para o valor inicial
         initial_cells = self.simulation.tumor_grid.initial_tumor_count * self.simulation.tumor_grid.scale_factor
-        self.stats_real_cells.set_text(f"Número real de células: {int(initial_cells):,}")
+        self.stats_real_cells.set_text(f"Escala real de células: {int(initial_cells):,}")
 
     def _update_frame(self, frame):
         """Atualiza frame da animação."""
@@ -343,7 +343,7 @@ class TumorVisualizer:
 
         self.frame_text.set_text(f"Frame: {frame}")
         self.stats_text.set_text(f"Tumor: {tumor_count} | Necrótico: {necrotic_count}")
-        self.stats_real_cells.set_text(f'Número real de células: {display_text}')
+        self.stats_real_cells.set_text(f'Escala real de células: {display_text}')
 
         # Verificar convergência da simulação
         converged, reason = self.simulation.has_converged()
@@ -355,7 +355,7 @@ class TumorVisualizer:
             if self.ani:
                 self.ani.event_source.stop()
                 self.ani = None
-        
+
         return [self.im, self.line_tumor, self.line_necrotic]
 
     '''FUNÇÃO NOVA'''
@@ -395,7 +395,7 @@ class TumorVisualizer:
         current_necrotic = self.simulation.necrotic_count[-1]
 
         # Define limites baseados nos valores atuais com margem
-        y_min = max(N0, min(current_tumor, current_necrotic) / 10)  # 10% abaixo do menor valor
+        y_min = max(0, min(current_tumor, current_necrotic) / 10)  # 10% abaixo do menor valor
         y_max = max(current_tumor, current_necrotic) * 2  # Dobro do maior valor
 
         # Garante que y_min não seja zero (problema com log)
